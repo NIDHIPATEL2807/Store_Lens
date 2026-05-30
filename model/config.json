@@ -1,0 +1,35 @@
+{
+  "store_id": "STORE_BLR_002",
+  "fps": 15,
+  "device": "cpu",
+  "model_path": "yolov8n.pt",
+  "confidence_threshold": 0.4,
+
+  "staff_threshold_minutes": 10,
+  "dwell_threshold_seconds": 30,
+  "reentry_window_seconds": 90,
+
+  "cameras": {
+    "entry": {
+      "camera_id": "CAM_ENTRY_01",
+      "zones": {
+        "DOOR": [[0.2, 0.0], [0.8, 0.0], [0.8, 0.25], [0.2, 0.25]]
+      }
+    },
+    "floor": {
+      "camera_id": "CAM_FLOOR_01",
+      "zones": {
+        "SKINCARE":  { "polygon": [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]], "sku_zone": "MOISTURISER" },
+        "LIPSTICK":  { "polygon": [[0.5, 0.0], [1.0, 0.0], [1.0, 0.5], [0.5, 0.5]], "sku_zone": "LIPSTICK" },
+        "FRAGRANCE": { "polygon": [[0.0, 0.5], [0.5, 0.5], [0.5, 1.0], [0.0, 1.0]], "sku_zone": "FRAGRANCE" },
+        "HAIRCARE":  { "polygon": [[0.5, 0.5], [1.0, 0.5], [1.0, 1.0], [0.5, 1.0]], "sku_zone": "HAIRCARE" }
+      }
+    },
+    "billing": {
+      "camera_id": "CAM_BILLING_01",
+      "zones": {
+        "BILLING": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+      }
+    }
+  }
+}

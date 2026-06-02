@@ -1,4 +1,99 @@
+# ── Secrets & credentials ─────────────────────────────────────────────────────
 .env
+.env.*
+*.key
+secrets.json
+credentials.json
+config.local.json
+
+# ── Python runtime ─────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.cover
+.coverage
+htmlcov/
+
+# ── Virtual environments ────────────────────────────────────────────────────────
 venv/
+env/
+.venv/
+
+# ── Model weights (large binaries — download separately) ───────────────────────
+*.pt
+*.pth
+*.onnx
+*.engine
+*.tflite
+*.pb
+
+# ── Video & image inputs (large media — store in cloud / shared drive) ──────────
+input/
 INPUT/
+*/input/
+*/INPUT/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.hevc
+*.h265
+*.ts
+
+# ── Pipeline outputs (generated, reproducible — do not commit raw data) ─────────
+output/
 OUTPUT/
+*/output/
+*/OUTPUT/
+
+# ── Layer-specific generated artefacts ──────────────────────────────────────────
+# L1 — extracted frames and viz overlays
+*/frames/
+*/viz/
+
+# L2 — per-frame JSONL tracks
+*.jsonl
+
+# L1 — auto-backup JSONs created by annotate_zones.py
+*_backup_*.json
+
+# Layout PNGs inside output (keep only store_layout.json, not raw images)
+output/**/*.png
+output/**/*.jpg
+output/**/*.jpeg
+
+# ── Logs ────────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS junk ─────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ── IDE / editor ────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+*.swo
+*~
+
+# ── Jupyter ─────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Misc temp ───────────────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak

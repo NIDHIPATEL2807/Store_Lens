@@ -706,20 +706,20 @@
           "is_revenue_zone": false,
           "polygon": [
             [
-              1001,
-              14
+              1364,
+              263
             ],
             [
-              1269,
-              8
+              659,
+              1066
             ],
             [
-              1155,
-              496
+              1893,
+              1059
             ],
             [
-              899,
-              791
+              1895,
+              29
             ]
           ]
         },
@@ -728,9 +728,33 @@
           "zone_name": "Floor",
           "zone_type": "floor",
           "is_revenue_zone": false,
-          "polygon": []
+          "polygon": [
+            [
+              641,
+              117
+            ],
+            [
+              744,
+              860
+            ],
+            [
+              878,
+              796
+            ],
+            [
+              951,
+              212
+            ]
+          ]
         }
-      ]
+      ],
+      "entry_line": {
+        "x1": 1105,
+        "y1": 0,
+        "x2": 1012,
+        "y2": 724
+      },
+      "entry_direction": "right_to_left"
     },
     {
       "camera_id": "CAM_BILLING_01",

@@ -285,12 +285,12 @@
         }
       ],
       "entry_line": {
-        "x1": 310,
-        "y1": 664,
-        "x2": 670,
-        "y2": 619
+        "x1": 440,
+        "y1": 40,
+        "x2": 474,
+        "y2": 646
       },
-      "entry_direction": "bottom_to_top"
+      "entry_direction": "top_to_bottom"
     },
     {
       "camera_id": "CAM_ENTRY_02",

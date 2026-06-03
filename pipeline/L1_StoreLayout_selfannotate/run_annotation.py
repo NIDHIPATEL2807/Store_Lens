@@ -6,8 +6,9 @@ Extracts one frame per camera, then opens the interactive
 annotation window so you can draw zone polygons with your mouse.
 
 Usage:
-    python run_annotation.py                    # all stores in input/
-    python run_annotation.py --store "Store 1"  # one store only
+    python run_annotation.py                                    # all stores in input/
+    python run_annotation.py --store "Store 1"                  # one store only
+    python run_annotation.py --store "Store 1" --camera CAM_ENTRY_01   # one camera only
     python run_annotation.py --open 09:00 --close 21:00
 """
 
@@ -66,7 +67,8 @@ def _refresh_derived(layout: dict) -> None:
     })
 
 
-def process_store(store_dir: Path, open_time: str, close_time: str) -> None:
+def process_store(store_dir: Path, open_time: str, close_time: str,
+                  camera_filter: str | None = None) -> None:
     store_id    = store_name_to_id(store_dir.name)
     store_out   = OUTPUT_DIR / store_dir.name
     frames_dir  = store_out / "frames"
@@ -95,6 +97,8 @@ def process_store(store_dir: Path, open_time: str, close_time: str) -> None:
 
     # ── Step 3: Annotate each camera ─────────────────────────────────
     for cam_data in layout["cameras"]:
+        if camera_filter and cam_data["camera_id"] != camera_filter:
+            continue
         cam_id     = cam_data["camera_id"]
         frame_path = frames_dir / f"{cam_id}.jpg"
 
@@ -138,10 +142,15 @@ def process_store(store_dir: Path, open_time: str, close_time: str) -> None:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--store", default=None,   help="Process only this store folder name")
-    ap.add_argument("--open",  default="10:00", dest="open_time")
-    ap.add_argument("--close", default="22:00", dest="close_time")
+    ap.add_argument("--store",  default=None, help="Process only this store folder name")
+    ap.add_argument("--camera", default=None, help="Re-annotate only this camera ID (e.g. CAM_ENTRY_01)")
+    ap.add_argument("--open",   default="10:00", dest="open_time")
+    ap.add_argument("--close",  default="22:00", dest="close_time")
     args = ap.parse_args()
+
+    if args.camera and not args.store:
+        print("[ERROR] --camera requires --store (we need to know which store)")
+        sys.exit(1)
 
     if args.store:
         store_dirs = [INPUT_DIR / args.store]
@@ -157,7 +166,7 @@ def main():
 
     for store_dir in store_dirs:
         try:
-            process_store(store_dir, args.open_time, args.close_time)
+            process_store(store_dir, args.open_time, args.close_time, args.camera)
         except Exception as exc:
             import traceback
             print(f"\n[ERROR] {store_dir.name}: {exc}")

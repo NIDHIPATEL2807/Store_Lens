@@ -35,8 +35,10 @@ CONF_BY_TYPE: dict[str, float] = {
 }
 DEFAULT_CONF = 0.35
 
-MIN_BBOX_W = 30   # pixels — anything narrower is not a real person
-MIN_BBOX_H = 40   # pixels — anything shorter is noise / partial limb
+MIN_BBOX_W = 30        # pixels — anything narrower is not a real person
+MIN_BBOX_H = 40        # pixels — anything shorter is noise / partial limb
+EDGE_MARGIN_FRAC = 0.025  # 2.5% of frame dimension — scales with any resolution
+OCCLUSION_AREA = 200_000  # px² — blob this large likely contains 2+ merged persons
 
 LONG_DURATION_SECONDS = 10 * 60   # 10 min → possible staff signal for L5
 GROUP_WINDOW_SECONDS  = 2.0       # two tracks appearing within 2s → same group
@@ -139,8 +141,9 @@ class DetectTracker:
                         )
                         break
                     logger.debug("%s: dropped raw frame %d", self.cam_id, frame_num)
-                    ts = frame_timestamp(clip_start, frame_num, fps)
-                    out_f.write(json.dumps(self._dropped_record(frame_num, ts)) + "\n")
+                    if frame_num % self.frame_skip == 0:
+                        ts = frame_timestamp(clip_start, frame_num, fps)
+                        out_f.write(json.dumps(self._dropped_record(frame_num, ts)) + "\n")
                     frame_num += 1
                     continue
 
@@ -209,11 +212,20 @@ class DetectTracker:
                 low_mask = dets.confidence < 0.35
                 low_conf_dropped = int(low_mask.sum())
 
-            # size filter — hands, reflections, products held up
+            # size + edge filter — hands/reflections/products and partial detections clipped by frame boundary
             bx = dets.xyxy
             w_arr = bx[:, 2] - bx[:, 0]
             h_arr = bx[:, 3] - bx[:, 1]
-            dets = dets[(w_arr >= MIN_BBOX_W) & (h_arr >= MIN_BBOX_H)]
+            size_ok = (w_arr >= MIN_BBOX_W) & (h_arr >= MIN_BBOX_H)
+            xm = int(vid_w * EDGE_MARGIN_FRAC)
+            ym = int(vid_h * EDGE_MARGIN_FRAC)
+            edge_ok = (
+                (bx[:, 0] >= xm) &
+                (bx[:, 1] >= ym) &
+                (bx[:, 2] <= vid_w - xm) &
+                (bx[:, 3] <= vid_h - ym)
+            )
+            dets = dets[size_ok & edge_ok]
 
         # ── track ─────────────────────────────────────────────────────
         if len(dets) > 0:
@@ -242,13 +254,15 @@ class DetectTracker:
                 state     = self._ensure_state(tid, frame_num, seconds_in)
                 duration  = seconds_in - state.first_seen_seconds
                 long_flag = duration >= LONG_DURATION_SECONDS
+                bbox_area = int((bbox[2] - bbox[0]) * (bbox[3] - bbox[1]))
 
                 track_rec: dict = {
                     "track_id":           tid,
                     "bbox":               bbox,
                     "centroid":           [cx, cy],
                     "confidence":         round(conf, 3),
-                    "bbox_area":          int((bbox[2] - bbox[0]) * (bbox[3] - bbox[1])),
+                    "bbox_area":          bbox_area,
+                    "occluded":           bbox_area > OCCLUSION_AREA,
                     "long_duration_flag": long_flag,
                 }
                 if state.group_id:

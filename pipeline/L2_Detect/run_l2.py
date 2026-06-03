@@ -7,15 +7,15 @@ and runs per-frame person detection + ByteTrack.
 
 Output: one .jsonl file per camera per clip in output/<store_id>/
 
-Usage:
+Usage (Windows cmd):
     # Single video
-    python run_l2.py --layout ../L1_StoreLayout_selfannotate/output/Store\ 1/store_layout.json \
-                     --video  input/Store\ 1/CAM\ 1\ -\ zone.mp4 \
+    python run_l2.py --layout "../L1_StoreLayout_selfannotate/output/Store 1/store_layout.json" ^
+                     --video  "../L1_StoreLayout_selfannotate/input/Store 1/CAM 1 - zone.mp4" ^
                      --clip_start 2026-03-08T10:00:00Z
 
     # All videos in a folder
-    python run_l2.py --layout  input/output/Store\ 1/store_layout.json \
-                     --video_dir input/Store\ 1/
+    python run_l2.py --layout "../L1_StoreLayout_selfannotate/output/Store 1/store_layout.json" ^
+                     --video_dir "../L1_StoreLayout_selfannotate/input/Store 1/"
 
     # Override frame skip and model
     python run_l2.py --layout ... --video_dir ... --frame_skip 5 --model yolov8s.pt

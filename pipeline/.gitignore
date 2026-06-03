@@ -49,10 +49,10 @@ INPUT/
 *.ts
 
 # ── Pipeline outputs (generated, reproducible — do not commit raw data) ─────────
-output/
-OUTPUT/
-*/output/
-*/OUTPUT/
+# output/
+# OUTPUT/
+# */output/
+# */OUTPUT/
 
 # ── Layer-specific generated artefacts ──────────────────────────────────────────
 # L1 — extracted frames and viz overlays

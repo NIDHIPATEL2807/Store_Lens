@@ -35,7 +35,9 @@ def _auto_ingest() -> None:
         if count > 0:
             return
 
-    pattern = str(Path(__file__).parent.parent.parent / "L6_emit" / "output" / "**" / "events.jsonl")
+    # Works both locally (../../L6_emit) and in Docker (/api/L6_emit)
+    base = Path(__file__).parent.parent  # /api when in Docker, pipeline/L7_api locally
+    pattern = str(base / "L6_emit" / "output" / "**" / "events.jsonl")
     files = glob.glob(pattern, recursive=True)
     if not files:
         return

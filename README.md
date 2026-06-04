@@ -289,3 +289,18 @@ L5 two-stage: HSV colour matching → Groq VLM fallback (`llama-4-scout`).
 | Tests | pytest + httpx TestClient (19/19) |
 | Dashboard | Streamlit + Plotly |
 | Deploy | Docker + Render + Streamlit Cloud |
+
+---
+
+## Author
+
+**Nidhi Patel**
+
+[![GitHub](https://img.shields.io/badge/GitHub-NIDHIPATEL2807-181717?logo=github)](https://github.com/NIDHIPATEL2807)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Nidhi%20Patel-0A66C2?logo=linkedin)](https://www.linkedin.com/in/nidhi-patel-424674252/)
+
+---
+
+## License
+
+MIT License — free to use, modify, and distribute with attribution.

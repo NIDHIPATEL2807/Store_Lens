@@ -2,7 +2,7 @@
 
 ## Overview
 
-A 7-layer computer vision pipeline that transforms raw CCTV footage into structured retail events and serves them through a REST API. The system is designed to be camera-agnostic: adding a new store requires only annotating zones in L1 — no code changes.
+A 7-layer computer vision pipeline that transforms raw CCTV footage into structured retail events served through a production REST API. The system is designed around one core principle: **adding a new store or camera requires zero code changes** — only annotation.
 
 ---
 
@@ -11,8 +11,14 @@ A 7-layer computer vision pipeline that transforms raw CCTV footage into structu
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                         INPUT LAYER                                      │
-│   Raw CCTV mp4 files  +  Manual zone annotation (L1)                    │
-│   → store_layout.json  (zone polygons, entry lines, camera metadata)     │
+│   Raw CCTV mp4 files  (any resolution, any camera, any store)           │
+└──────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  L1 — Self-Annotation Tool  (CORE IDEATION)                             │
+│  Interactive OpenCV tool: draw zone polygons directly on camera frames  │
+│  → store_layout.json  (the single source of truth for all layers)       │
 └──────────────────────────────────────────────────────────────────────────┘
                                    │
                     ┌──────────────┼──────────────┐
@@ -21,51 +27,52 @@ A 7-layer computer vision pipeline that transforms raw CCTV footage into structu
                     │              │              │
                     ▼              ▼              ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  L2 — YOLOv8 + ByteTrack                                                │
-│  Per-frame: bbox, centroid, track_id, confidence, occluded flag          │
+│  L2 — YOLOv8n + ByteTrack                                               │
+│  Per-frame: bbox, centroid, track_id, confidence, occluded flag         │
 │  Output: tracks.jsonl  (one per camera)                                 │
 └──────────────────────────────────────────────────────────────────────────┘
-                    │                    │
-          ┌─────────┘                    └─────────────────────────┐
-          ▼                                                         ▼
-┌──────────────────────┐                                ┌──────────────────────┐
-│  L3 — Zone Assign    │                                │  L4 — Entry/Exit     │
-│  Shapely PIP per     │                                │  Zone-transition     │
-│  frame centroid      │                                │  state machine       │
-│  → ZONE_ENTER/EXIT/  │                                │  OUTSIDE→INSIDE=     │
-│    ZONE_DWELL        │                                │  ENTRY               │
-└──────────────────────┘                                └──────────────────────┘
-          │                                                         │
-          └─────────────────────┬───────────────────────────────────┘
-                                │
-                                ▼
+              │                              │
+    ┌─────────┘                             └───────────────────┐
+    ▼                                                           ▼
+┌──────────────────────┐                          ┌────────────────────────┐
+│  L3 — Zone Assign    │                          │  L4 — Entry/Exit Gate  │
+│  Shapely point-in-   │                          │  Zone-transition state │
+│  polygon per centroid│                          │  machine:              │
+│  ZONE_ENTER/EXIT/    │                          │  OUTSIDE→INSIDE=ENTRY  │
+│  ZONE_DWELL          │                          │  INSIDE→OUTSIDE=EXIT   │
+└──────────────────────┘                          └────────────────────────┘
+              │                                                │
+              └──────────────────┬─────────────────────────────┘
+                                 │
+                                 ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  L5 — Staff Detection + Cross-Camera Re-ID                               │
-│  • Uniform colour HSV → Groq VLM fallback → is_staff flag                │
-│  • OSNet x0.25 (512-d embeddings) → cosine similarity → REENTRY/VISITOR_LINKED │
+│  L5 — Staff Detection + Cross-Camera Re-ID                              │
+│  • HSV colour histogram → Groq VLM fallback → is_staff flag            │
+│  • OSNet x0.25 (512-d embeddings) → cosine similarity → REENTRY        │
+│  • YOLO person verifier: rejects backpacks/bags before staff check      │
 └──────────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
+                                 │
+                                 ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  L6 — Event Merge (run_l6.py)                                            │
-│  1. Load + sort L3 / L4 / L5 events by timestamp                        │
-│  2. visitor_mapper: (camera_id, track_id) → visitor_id from L4+L5       │
-│  3. staff_applicator: retroactive is_staff from L5 STAFF_FLAGGED        │
-│  4. reentry_resolver: suppress duplicate L4 ENTRY when L5 REENTRY found │
-│  5. pos_correlator: 5-min billing window → BILLING_QUEUE_JOIN/ABANDON    │
-│  6. session_sequencer: per-visitor_id seq counter (never resets)         │
-│  7. event_builder: Pydantic validation → events.jsonl / rejected.jsonl  │
+│  L6 — Event Merge (7 sequential passes)                                 │
+│  1. Load + sort all events by timestamp                                 │
+│  2. visitor_mapper: (camera_id, track_id) → visitor_id                 │
+│  3. staff_applicator: retroactive is_staff from STAFF_FLAGGED          │
+│  4. reentry_resolver: suppress duplicate ENTRY when REENTRY detected   │
+│  5. pos_correlator: 5-min billing window → QUEUE_JOIN/ABANDON          │
+│  6. session_sequencer: per-visitor_id seq counter (never resets)       │
+│  7. event_builder: Pydantic v2 validation → events.jsonl               │
 └──────────────────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
+                                 │
+                                 ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  L7 — FastAPI + SQLite                                                   │
-│  POST /events/ingest  (batch, idempotent, INSERT OR IGNORE)             │
-│  GET  /stores/{id}/metrics   — visitors, conversion, dwell, queue        │
-│  GET  /stores/{id}/funnel    — 4-stage with drop-off %                  │
-│  GET  /stores/{id}/heatmap   — zone scores 0–100                        │
-│  GET  /stores/{id}/anomalies — spike / drop / dead-zone                 │
-│  GET  /health                — DB ping, stale feed check                │
+│  L7 — FastAPI + SQLite (WAL mode)                                       │
+│  POST /events/ingest  — batch, idempotent (INSERT OR IGNORE + rowcount) │
+│  GET  /stores/{id}/metrics   — visitors, conversion, dwell, queue       │
+│  GET  /stores/{id}/funnel    — 4-stage with drop-off %                 │
+│  GET  /stores/{id}/heatmap   — zone scores 0–100                       │
+│  GET  /stores/{id}/anomalies — spike / drop / dead-zone                │
+│  GET  /health                — DB ping, stale feed check               │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,59 +80,70 @@ A 7-layer computer vision pipeline that transforms raw CCTV footage into structu
 
 ## Key Design Decisions
 
-### 1. Zone-based entry detection (L4)
+### 1. Self-Annotation Tool (L1) — biggest ideation
 
-**What:** Entry/exit is detected by watching zone transitions (OUTSIDE-* → INSIDE-*) rather than line crossing.
+**What:** Rather than relying on pre-labeled datasets, external annotation services, or hardcoded pixel coordinates, the pipeline ships its own interactive annotation tool. A non-technical user opens a camera frame in a window and clicks polygon points to draw zone boundaries. The tool auto-saves `store_layout.json` — the spatial map that drives every downstream layer.
 
-**Why:** Line crossing approaches require sub-pixel calibration and produce false positives when people pause at the door, move parallel to the line, or when the camera angle is not perpendicular. Zone-based detection is spatially tolerant — the "INSIDE" polygon is large enough that transient positions don't trigger false events.
+**Why this matters:** Every other component in the pipeline (detection, zone assignment, entry detection, Re-ID) is parameterized by `store_layout.json`. This means:
+- Adding a new store = run the annotation tool for ~20 minutes, zero code changes
+- Moving a camera = re-annotate that one camera, re-run from L2
+- Changing zone boundaries = re-annotate, re-run from L3
 
-**Trade-off:** Requires manual annotation of OUTSIDE/INSIDE zones per entry camera. Pays off because the detection is robust across different camera heights and angles.
+Without this, the pipeline would be hardcoded to specific stores. The self-annotation tool is what makes the system a **general-purpose retail analytics platform**, not a one-off solution.
 
----
-
-### 2. Two-stage staff detection (L5)
-
-**What:** First attempt uniform colour detection via HSV histogram matching. If inconclusive, send the crop to Groq's LLaMA vision model for a yes/no judgement.
-
-**Why:** Pure colour matching fails in mixed lighting. Pure VLM is expensive (API latency + cost). The hybrid approach covers >90% of cases with colour matching and only calls the API for ambiguous crops.
-
-**Trade-off:** Groq API dependency for edge cases. If API is down, colour-match-only mode still runs (soft fallback).
-
----
-
-### 3. OSNet for Re-ID embeddings
-
-**What:** OSNet x0.25 (512-dimensional appearance embeddings) for cross-camera visitor matching.
-
-**Why:** OSNet was specifically designed for person re-identification with a lightweight architecture. x0.25 runs on CPU in ~20ms per crop, acceptable for offline processing. The 512-d embedding space allows robust cosine similarity matching with a 0.70 threshold that balances false-positive/negative rate.
-
-**Trade-off:** OSNet requires torchreid which is a large dependency. Alternative would be a colour histogram approach (faster, no dependency) but with far weaker identity discrimination.
+**Unique decisions inside L1:**
+- Zones are drawn on **actual camera frames** extracted from the video at t=5s — not on a static floor plan. This means annotations are pixel-accurate for the actual camera perspective.
+- Entry cameras get a **two-phase annotation**: first draw OUTSIDE/INSIDE zone polygons, then draw the entry threshold line. Both are needed for robust entry detection.
+- The tool saves a **timestamped backup** before every overwrite — annotation work is never lost.
+- Zone type (`shelf`, `entry`, `billing`, `floor`, `boh`) is captured at annotation time and flows through to every downstream event as `sku_zone` and `is_revenue_zone`.
 
 ---
 
-### 4. SQLite with WAL mode (L7)
+### 2. Zone-based entry detection instead of line crossing
 
-**What:** SQLite in WAL (Write-Ahead Logging) mode as the API database.
+**What:** Entry/exit events fire on zone transitions (OUTSIDE-* → INSIDE-*) rather than geometric line crossings.
 
-**Why:** The pipeline runs offline — there is no concurrent write load requiring PostgreSQL. SQLite ships zero-config, has no Docker service dependency, and WAL mode supports concurrent reads alongside writes. The events table is append-only with `INSERT OR IGNORE` idempotency.
+**Why:** Line crossing requires sub-pixel calibration and produces false positives when people pause at the door, walk parallel to the line, or when camera angles are oblique. Zone-based detection is spatially tolerant — large polygons absorb positional uncertainty.
 
-**Trade-off:** Cannot scale horizontally. If the API needed to run across multiple processes, a server-based database would be required. Acceptable for a single-store analytics use case.
+**State machine:**
+```
+outside_store ──[ZONE_ENTER(INSIDE)]──► inside_store
+inside_store  ──[ZONE_ENTER(DOOR)]───► exiting
+exiting       ──[ZONE_ENTER(OUTSIDE)]─► outside_store  → fires EXIT
+inside_store  ──[ZONE_ENTER(OUTSIDE)]─► outside_store  → fires EXIT
+```
 
----
-
-### 5. Group entry pre-scan (L4)
-
-**What:** Before processing any events, a first pass over the zone events file clusters ZONE_ENTER(INSIDE) timestamps within a 4-second window. All members of a cluster get the same `group_id` before any event is emitted.
-
-**Why:** Without the pre-scan, the first person in a group always gets `group_id=None` (because no one else has entered yet when their event fires). The pre-scan solves this: all group members are identified upfront so every event in the group carries the same `group_id`.
-
-**Trade-off:** Requires loading the file twice. Acceptable because the files are small (seconds to load).
+**Group detection pre-scan:** Before processing any events, a first pass clusters ZONE_ENTER(INSIDE) timestamps within a 4-second window. All cluster members get the same `group_id` before any event fires — solving the asymmetry where the first group member would otherwise have no `group_id`.
 
 ---
 
-## Event Schema
+### 3. Two-stage staff detection
 
-All events across L3–L7 use the same schema:
+**What:** HSV colour histogram matching first. Groq VLM (`meta-llama/llama-4-scout-17b-16e-instruct`) as fallback for ambiguous crops. YOLO person verifier runs before either stage to reject non-person detections (bags, chairs).
+
+**Why:** Pure colour matching fails in mixed lighting. Pure VLM is expensive (API latency + cost per call). The hybrid covers the common case cheaply and reserves the API call for genuinely ambiguous crops. The person verifier eliminates a whole class of false positives that would waste VLM calls.
+
+---
+
+### 4. OSNet x0.25 for cross-camera Re-ID
+
+**What:** 512-dimensional appearance embeddings per person crop. Cosine similarity matching at 0.70 threshold across cameras.
+
+**Why:** OSNet was specifically designed for person re-identification. x0.25 is the smallest variant — runs on CPU in ~20ms/crop. The 512-d space provides enough discriminative power for a small store population. Shape-guarded comparisons prevent the numpy mismatch that occurs when crop extraction fails and returns None.
+
+---
+
+### 5. SQLite WAL mode for the API database
+
+**What:** Single file `data/store.db` in WAL (Write-Ahead Logging) journal mode. `INSERT OR IGNORE` + `rowcount` check for idempotent ingest.
+
+**Why:** Zero-config, no Docker service dependency, no credentials. WAL mode enables concurrent reads + writes without blocking — critical for an API that ingests and serves simultaneously. The `rowcount` check correctly returns `accepted=0` for duplicate event IDs (pure `INSERT OR IGNORE` without rowcount would wrongly count ignored rows).
+
+---
+
+### 6. Camera-agnostic event schema
+
+All events from L3 through L7 share one schema:
 
 ```json
 {
@@ -151,20 +169,30 @@ All events across L3–L7 use the same schema:
 }
 ```
 
-Event types in the pipeline:
+This schema is validated by Pydantic v2 at the L6 boundary. Events that fail validation are written to `rejected_events.jsonl` with the reason, never silently dropped.
+
+---
+
+## Event types produced
 
 | Event | Source | Meaning |
 |---|---|---|
-| `ZONE_ENTER` | L3 | Person centroid entered a zone polygon |
-| `ZONE_EXIT` | L3 | Person centroid left a zone polygon |
-| `ZONE_DWELL` | L3 | Person present in zone for 30+ seconds |
-| `ENTRY` | L4 | Person crossed from OUTSIDE to INSIDE zone |
-| `EXIT` | L4 | Person crossed from INSIDE back to OUTSIDE zone |
-| `REENTRY` | L5 | Known visitor matched via Re-ID embedding |
-| `VISITOR_LINKED` | L5 | Same person seen on a different camera |
+| `ZONE_ENTER` | L3 | Centroid entered zone polygon |
+| `ZONE_EXIT` | L3 | Centroid left zone polygon |
+| `ZONE_DWELL` | L3 | Present in zone 30+ seconds |
+| `ENTRY` | L4 | Crossed gate OUTSIDE → INSIDE |
+| `EXIT` | L4 | Crossed gate INSIDE → OUTSIDE |
+| `REENTRY` | L5 | Known visitor matched via Re-ID |
+| `VISITOR_LINKED` | L5 | Same person seen on different camera |
 | `STAFF_FLAGGED` | L5 | Track classified as store staff |
-| `BILLING_QUEUE_JOIN` | L6 | Visitor reached billing zone |
-| `BILLING_QUEUE_ABANDON` | L6 | Visitor left billing zone before converting |
+| `BILLING_QUEUE_JOIN` | L6 | Reached billing zone |
+| `BILLING_QUEUE_ABANDON` | L6 | Left billing zone before converting |
+
+---
+
+## Partial-camera coverage handling
+
+Store 1's entry camera covered a side entrance with no foot traffic during the recording. The pipeline handles this correctly: visitors who first appear in zone cameras get an ENTRY event generated by L5 (first-track-appearance = entry signal). This is the correct behaviour — it is not a fallback or a bug. Stores with partial camera coverage are a real-world constraint, and the pipeline degrades gracefully.
 
 ---
 
@@ -172,12 +200,14 @@ Event types in the pipeline:
 
 This project used Claude (Anthropic) as a development assistant for:
 
-1. **Zone-transition entry logic** — The original line-crossing approach produced false positives (people walking parallel to the door). Claude helped reason through the state machine: track OUTSIDE-* → INSIDE-* zone transitions instead of geometrically crossing a line.
+1. **Zone-transition entry logic** — Original line-crossing approach produced false positives. Claude helped design the OUTSIDE/INSIDE zone state machine as a more robust alternative.
 
-2. **Group detection pre-scan** — The first design left the first group member without a `group_id`. Claude identified the asymmetry and suggested the two-pass approach (pre-scan all entries, cluster by time window, assign group IDs before the main loop runs).
+2. **Group detection pre-scan** — First design left the first group member without a `group_id`. Claude identified the asymmetry and proposed the two-pass approach.
 
-3. **Re-ID shape guard** — When a crop extraction failed (returns None), the original code stored `np.zeros(1)` as a placeholder. When this 1-d vector was later compared against a 512-d OSNet embedding, numpy raised a shape mismatch. Claude identified that the fix was to skip the cache entirely when embedding is None rather than storing a sentinel value.
+3. **Re-ID shape guard** — None crops stored as `np.zeros(1)` caused shape mismatch against 512-d OSNet embeddings. Claude identified the fix: skip cache entirely when embedding is None.
 
-4. **FastAPI migration** — The initial implementation used Flask. Claude rewrote all blueprints to FastAPI APIRouters, converted the test fixtures from `flask.testing.FlaskClient` to `fastapi.testclient.TestClient`, and handled the request body parsing edge case (invalid JSON returning 400 instead of FastAPI's default 422).
+4. **FastAPI migration** — Rewrote all Flask Blueprints to FastAPI APIRouters, fixed test fixtures for `TestClient`, handled invalid-JSON → 400 edge case.
 
-5. **L6 merge architecture** — Claude designed the 7-step merge pipeline (load → map → staff → reentry → POS → seq → build) as separate single-responsibility modules rather than one monolithic merge function.
+5. **SQLite thread safety in tests** — Tests returned 503 because the shared in-memory connection was created in the test thread and used by the app thread. Fix: `check_same_thread=False`.
+
+6. **Idempotent ingest rowcount** — `INSERT OR IGNORE` without checking `cursor.rowcount` counted ignored duplicates as accepted. Fix: `if cur.rowcount > 0: accepted += 1`.

@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from database import get_db
+import database
 from models import AnomaliesResponse, Anomaly
 
 router = APIRouter()
@@ -32,7 +32,7 @@ def get_anomalies(store_id: str):
     detected: list[Anomaly] = []
 
     try:
-        with get_db() as db:
+        with database.get_db() as db:
             exists = db.execute(
                 "SELECT 1 FROM events WHERE store_id=? LIMIT 1", (store_id,)
             ).fetchone()

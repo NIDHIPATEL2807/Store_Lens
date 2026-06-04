@@ -17,7 +17,7 @@ def _patch_db(monkeypatch):
     import sqlite3
     from contextlib import contextmanager
 
-    _conn = sqlite3.connect(":memory:")
+    _conn = sqlite3.connect(":memory:", check_same_thread=False)
     _conn.row_factory = sqlite3.Row
     _conn.executescript(database._DDL)
     _conn.commit()

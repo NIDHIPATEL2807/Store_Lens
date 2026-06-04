@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from database import get_db
+import database
 from models import IncomingEvent, IngestResponse, RejectedEvent
 
 router = APIRouter()
@@ -38,7 +38,7 @@ async def ingest(request: Request):
     accepted, rejected = 0, []
 
     try:
-        with get_db() as db:
+        with database.get_db() as db:
             for i, raw in enumerate(body):
                 try:
                     ev = IncomingEvent.model_validate(raw)
@@ -46,12 +46,13 @@ async def ingest(request: Request):
                     rejected.append(RejectedEvent(index=i, reason=str(e), raw=raw))
                     continue
 
-                db.execute(_INSERT, (
+                cur = db.execute(_INSERT, (
                     ev.event_id, ev.store_id, ev.camera_id, ev.visitor_id, ev.event_type,
                     ev.timestamp, ev.zone_id, ev.dwell_ms, int(ev.is_staff), ev.confidence,
                     int(ev.converted), json.dumps(ev.metadata.model_dump()),
                 ))
-                accepted += 1
+                if cur.rowcount > 0:
+                    accepted += 1
     except Exception as e:
         return JSONResponse(
             {"error": "database_unavailable", "detail": str(e), "retry_after": 30},

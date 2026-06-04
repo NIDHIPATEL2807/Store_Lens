@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from database import get_db
+import database
 from models import FunnelResponse, FunnelStage
 
 router = APIRouter()
@@ -21,7 +21,7 @@ def _dropoff(prev: int, curr: int) -> float:
 @router.get("/stores/{store_id}/funnel")
 def get_funnel(store_id: str, date: Optional[str] = None):
     try:
-        with get_db() as db:
+        with database.get_db() as db:
             exists = db.execute(
                 "SELECT 1 FROM events WHERE store_id=? LIMIT 1", (store_id,)
             ).fetchone()

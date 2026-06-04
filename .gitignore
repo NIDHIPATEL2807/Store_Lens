@@ -27,6 +27,9 @@ groq_api_key.ENV
 # ── Generated database ──────────────────────────────────────────────────────────
 pipeline/L7_api/data/
 
+# ── Streamlit secrets (contains real URLs) ──────────────────────────────────────
+dashboard/.streamlit/secrets.toml
+
 # ── OS junk ─────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db

@@ -5,7 +5,7 @@ import time
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from database import get_db, ping
+import database
 from models import HealthResponse, StoreHealth
 
 router = APIRouter()
@@ -21,14 +21,14 @@ def health():
 
     db_latency, db_error = None, None
     try:
-        db_latency = ping()
+        db_latency = database.ping()
     except Exception as e:
         db_error = str(e)
 
     stores: list[StoreHealth] = []
     if db_error is None:
         try:
-            with get_db() as db:
+            with database.get_db() as db:
                 store_ids = [r[0] for r in db.execute(
                     "SELECT DISTINCT store_id FROM events"
                 ).fetchall()]

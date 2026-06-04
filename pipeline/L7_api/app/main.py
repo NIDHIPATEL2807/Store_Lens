@@ -6,6 +6,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+import json
+import glob
+from pathlib import Path
+
+import database
 from database           import init_db
 from ingestion          import router as ingestion_router
 from metrics            import router as metrics_router
@@ -16,9 +21,55 @@ from health             import router as health_router
 from logging_middleware import LoggingMiddleware
 
 
+_INSERT = """
+INSERT OR IGNORE INTO events
+    (event_id, store_id, camera_id, visitor_id, event_type,
+     timestamp, zone_id, dwell_ms, is_staff, confidence, converted, metadata)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+"""
+
+def _auto_ingest() -> None:
+    """On cold start (empty DB), load all events.jsonl files automatically."""
+    with database.get_db() as db:
+        count = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        if count > 0:
+            return
+
+    pattern = str(Path(__file__).parent.parent.parent / "L6_emit" / "output" / "**" / "events.jsonl")
+    files = glob.glob(pattern, recursive=True)
+    if not files:
+        return
+
+    total = 0
+    with database.get_db() as db:
+        for fpath in files:
+            with open(fpath, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        e = json.loads(line)
+                        meta = e.get("metadata") or {}
+                        db.execute(_INSERT, (
+                            e.get("event_id"), e.get("store_id"), e.get("camera_id"),
+                            e.get("visitor_id"), e.get("event_type"), e.get("timestamp"),
+                            e.get("zone_id"), e.get("dwell_ms", 0),
+                            int(bool(e.get("is_staff", False))),
+                            e.get("confidence", 0.0),
+                            int(bool(e.get("converted", False))),
+                            json.dumps(meta),
+                        ))
+                        total += 1
+                    except Exception:
+                        pass
+    print(f"[startup] auto-ingested {total} events from {len(files)} file(s)")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _auto_ingest()
     yield
 
 

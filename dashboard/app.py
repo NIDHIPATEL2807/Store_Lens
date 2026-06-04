@@ -13,7 +13,7 @@ import plotly.express as px
 _DEFAULT_API = (
     st.secrets.get("API_URL")
     if hasattr(st, "secrets") and "API_URL" in (st.secrets or {})
-    else os.getenv("API_URL", "http://localhost:8001")
+    else os.getenv("API_URL", "https://store-lens.onrender.com")
 )
 
 st.set_page_config(page_title="Purplle Analytics", page_icon="💄", layout="wide")

@@ -101,6 +101,7 @@ def _precompute_groups(zone_events_path: Path) -> dict[int, tuple[str | None, in
 
     groups_found = sum(1 for v in group_map.values() if v[0] is not None)
     print(f"    [groups] {len(entries)} entries → {groups_found} in groups")
+    return group_map
 
 
 # ── Zone classification ───────────────────────────────────────────────────────

@@ -1,35 +1,50 @@
-"""Flask app factory. Run with:  flask --app app.main run  or  python app/main.py"""
+"""FastAPI app. Run with:  uvicorn app.main:app  or  python app/main.py"""
 
 import os
-from flask import Flask
+from contextlib import asynccontextmanager
 
-from database          import init_db
-from ingestion         import ingestion_bp
-from metrics           import metrics_bp
-from funnel            import funnel_bp
-from heatmap           import heatmap_bp
-from anomalies         import anomalies_bp
-from health            import health_bp
-from logging_middleware import register as register_logging
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-
-def create_app() -> Flask:
-    app = Flask(__name__)
-
-    # Register all blueprints
-    for bp in (ingestion_bp, metrics_bp, funnel_bp, heatmap_bp, anomalies_bp, health_bp):
-        app.register_blueprint(bp)
-
-    register_logging(app)
-
-    with app.app_context():
-        init_db()
-
-    return app
+from database           import init_db
+from ingestion          import router as ingestion_router
+from metrics            import router as metrics_router
+from funnel             import router as funnel_router
+from heatmap            import router as heatmap_router
+from anomalies          import router as anomalies_router
+from health             import router as health_router
+from logging_middleware import LoggingMiddleware
 
 
-app = create_app()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Purplle Store Analytics API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(LoggingMiddleware)
+
+for router in (
+    ingestion_router, metrics_router, funnel_router,
+    heatmap_router, anomalies_router, health_router,
+):
+    app.include_router(router)
+
+
+@app.exception_handler(Exception)
+async def _unhandled(request, exc):
+    import traceback, logging, json
+    logging.getLogger("api").error(json.dumps({
+        "error":     str(exc),
+        "traceback": traceback.format_exc()[-500:],
+    }))
+    return JSONResponse({"error": "internal_server_error", "detail": str(exc)}, status_code=500)
+
 
 if __name__ == "__main__":
+    import uvicorn
     port = int(os.getenv("PORT", 8000))
-    app.run(host="0.0.0.0", port=port, debug=os.getenv("DEBUG", "false").lower() == "true")
+    debug = os.getenv("DEBUG", "false").lower() == "true"
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=debug)

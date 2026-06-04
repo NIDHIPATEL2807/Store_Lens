@@ -1,57 +1,57 @@
-"""GET /stores/<store_id>/heatmap — zone visit frequency normalised 0-100."""
+"""GET /stores/{store_id}/heatmap — zone visit frequency normalised 0-100."""
 
 import time
-from flask import Blueprint, jsonify
+from typing import Optional
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
 from database import get_db
 from models import HeatmapResponse, HeatmapZone
 
-heatmap_bp = Blueprint("heatmap", __name__)
-
-# Zone types excluded from heatmap (threshold / non-revenue)
-_EXCLUDED_TYPES = {"entry", "outside"}
+router = APIRouter()
 
 
-def _today() -> str:
-    return time.strftime("%Y-%m-%d", time.gmtime())
-
-
-@heatmap_bp.route("/stores/<store_id>/heatmap")
-def get_heatmap(store_id: str):
-    today = _today()
+@router.get("/stores/{store_id}/heatmap")
+def get_heatmap(store_id: str, date: Optional[str] = None):
     try:
         with get_db() as db:
             exists = db.execute(
                 "SELECT 1 FROM events WHERE store_id=? LIMIT 1", (store_id,)
             ).fetchone()
             if not exists:
-                return jsonify({"error": "store_not_found", "store_id": store_id}), 404
+                return JSONResponse({"error": "store_not_found", "store_id": store_id}, status_code=404)
+
+            if date is None:
+                date = db.execute(
+                    "SELECT date(MAX(timestamp)) FROM events WHERE store_id=?", (store_id,)
+                ).fetchone()[0] or time.strftime("%Y-%m-%d", time.gmtime())
 
             rows = db.execute("""
-                SELECT zone_id,
-                       COUNT(*)          AS visit_count,
-                       AVG(dwell_ms)     AS avg_dwell_ms
+                SELECT zone_id, COUNT(*) AS visit_count, AVG(dwell_ms) AS avg_dwell_ms
                 FROM events
                 WHERE store_id=? AND is_staff=0
                   AND event_type IN ('ZONE_ENTER','ZONE_DWELL')
-                  AND zone_id IS NOT NULL
-                  AND date(timestamp)=?
+                  AND zone_id IS NOT NULL AND date(timestamp)=?
                 GROUP BY zone_id
-            """, (store_id, today)).fetchall()
+            """, (store_id, date)).fetchall()
 
             total_sessions = db.execute("""
                 SELECT COUNT(DISTINCT visitor_id) FROM events
                 WHERE store_id=? AND is_staff=0 AND visitor_id IS NOT NULL
                   AND event_type='ENTRY' AND date(timestamp)=?
-            """, (store_id, today)).fetchone()[0] or 0
+            """, (store_id, date)).fetchone()[0] or 0
 
     except Exception as e:
-        return jsonify({"error": "database_unavailable", "detail": str(e), "retry_after": 30}), 503
+        return JSONResponse(
+            {"error": "database_unavailable", "detail": str(e), "retry_after": 30},
+            status_code=503,
+        )
 
     if not rows:
-        return jsonify(HeatmapResponse(store_id=store_id, date=today, zones=[]).model_dump())
+        return HeatmapResponse(store_id=store_id, date=date, zones=[]).model_dump()
 
     data_confidence = "LOW" if total_sessions < 20 else "OK"
-
     visits = [r["visit_count"] for r in rows]
     min_v, max_v = min(visits), max(visits)
     span = max_v - min_v or 1
@@ -69,5 +69,4 @@ def get_heatmap(store_id: str):
         ))
 
     zones.sort(key=lambda z: z.score, reverse=True)
-    resp = HeatmapResponse(store_id=store_id, date=today, zones=zones)
-    return jsonify(resp.model_dump())
+    return HeatmapResponse(store_id=store_id, date=date, zones=zones).model_dump()

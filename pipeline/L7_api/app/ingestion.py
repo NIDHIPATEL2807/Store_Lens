@@ -1,13 +1,15 @@
 """POST /events/ingest — batch ingest with dedup, partial success."""
 
 import json
-from flask import Blueprint, request, jsonify
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from database import get_db
 from models import IncomingEvent, IngestResponse, RejectedEvent
 
-ingestion_bp = Blueprint("ingestion", __name__)
+router = APIRouter()
 
 _INSERT = """
 INSERT OR IGNORE INTO events
@@ -18,20 +20,20 @@ VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?)
 """
 
 
-@ingestion_bp.route("/events/ingest", methods=["POST"])
-def ingest():
-    body = request.get_json(force=True, silent=True)
-    if body is None:
-        return jsonify({"error": "invalid_json"}), 400
+@router.post("/events/ingest")
+async def ingest(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid_json"}, status_code=400)
 
-    # Accept both array and single object
     if isinstance(body, dict):
         body = [body]
     if not isinstance(body, list):
-        return jsonify({"error": "expected_array_or_object"}), 400
+        return JSONResponse({"error": "expected_array_or_object"}, status_code=400)
 
     if len(body) > 500:
-        return jsonify({"error": "batch_too_large", "max": 500}), 400
+        return JSONResponse({"error": "batch_too_large", "max": 500}, status_code=400)
 
     accepted, rejected = 0, []
 
@@ -51,8 +53,11 @@ def ingest():
                 ))
                 accepted += 1
     except Exception as e:
-        return jsonify({"error": "database_unavailable", "detail": str(e), "retry_after": 30}), 503
+        return JSONResponse(
+            {"error": "database_unavailable", "detail": str(e), "retry_after": 30},
+            status_code=503,
+        )
 
     resp = IngestResponse(accepted=accepted, rejected=len(rejected), rejections=rejected)
     status = 207 if rejected else 200
-    return jsonify(resp.model_dump()), status
+    return JSONResponse(resp.model_dump(), status_code=status)

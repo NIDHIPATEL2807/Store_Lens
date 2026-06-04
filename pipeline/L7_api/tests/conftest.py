@@ -1,29 +1,26 @@
-"""Shared fixtures for all tests. Uses a fresh in-memory SQLite DB per test."""
+"""Shared fixtures. Uses a fresh in-memory SQLite DB per test."""
 
-import json
 import os
 import sys
 import pytest
 
-# Make app/ importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
-# Point to in-memory DB before any imports touch database.py
 os.environ["DATABASE_URL"] = ":memory:"
 
 import database
-from main import create_app
+from main import app
+from fastapi.testclient import TestClient
 
 
 def _patch_db(monkeypatch):
-    """Each test gets a fresh in-memory connection (module-level singleton)."""
     import sqlite3
+    from contextlib import contextmanager
+
     _conn = sqlite3.connect(":memory:")
     _conn.row_factory = sqlite3.Row
     _conn.executescript(database._DDL)
     _conn.commit()
-
-    from contextlib import contextmanager
 
     @contextmanager
     def _get_db():
@@ -42,9 +39,7 @@ def _patch_db(monkeypatch):
 @pytest.fixture
 def client(monkeypatch):
     _patch_db(monkeypatch)
-    app = create_app()
-    app.config["TESTING"] = True
-    with app.test_client() as c:
+    with TestClient(app) as c:
         yield c
 
 
@@ -52,8 +47,6 @@ def client(monkeypatch):
 def db_conn(monkeypatch):
     return _patch_db(monkeypatch)
 
-
-# ── Helper to build a valid event dict ────────────────────────────────────────
 
 def make_event(**overrides) -> dict:
     base = {

@@ -1,15 +1,18 @@
-"""GET /stores/<store_id>/anomalies — active anomalies with severity + action."""
+"""GET /stores/{store_id}/anomalies — active anomalies with severity + action."""
 
 import time
 import uuid
-from flask import Blueprint, jsonify
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
 from database import get_db
 from models import AnomaliesResponse, Anomaly
 
-anomalies_bp = Blueprint("anomalies", __name__)
+router = APIRouter()
 
-QUEUE_SPIKE_THRESHOLD    = 5    # visitors
-QUEUE_SPIKE_DURATION_MIN = 5    # minutes elevated before firing
+QUEUE_SPIKE_THRESHOLD    = 5
+QUEUE_SPIKE_DURATION_MIN = 5
 CONVERSION_WARN_RATIO    = 0.70
 CONVERSION_CRIT_RATIO    = 0.50
 DEAD_ZONE_MINUTES        = 30
@@ -22,7 +25,7 @@ def _today() -> str:
     return time.strftime("%Y-%m-%d", time.gmtime())
 
 
-@anomalies_bp.route("/stores/<store_id>/anomalies")
+@router.get("/stores/{store_id}/anomalies")
 def get_anomalies(store_id: str):
     now_str = _now_utc()
     today   = _today()
@@ -34,7 +37,7 @@ def get_anomalies(store_id: str):
                 "SELECT 1 FROM events WHERE store_id=? LIMIT 1", (store_id,)
             ).fetchone()
             if not exists:
-                return jsonify({"error": "store_not_found", "store_id": store_id}), 404
+                return JSONResponse({"error": "store_not_found", "store_id": store_id}, status_code=404)
 
             # ── BILLING_QUEUE_SPIKE ───────────────────────────────────────────
             queue_depth = db.execute("""
@@ -56,7 +59,6 @@ def get_anomalies(store_id: str):
             """, (store_id, store_id)).fetchone()[0] or 0
 
             if queue_depth > QUEUE_SPIKE_THRESHOLD:
-                # Check how long queue has been elevated
                 spike_since = db.execute("""
                     SELECT MIN(timestamp) FROM events
                     WHERE store_id=? AND event_type='BILLING_QUEUE_JOIN'
@@ -84,8 +86,7 @@ def get_anomalies(store_id: str):
 
             today_conv = db.execute("""
                 SELECT COUNT(DISTINCT visitor_id) FROM events
-                WHERE store_id=? AND is_staff=0 AND converted=1
-                  AND date(timestamp)=?
+                WHERE store_id=? AND is_staff=0 AND converted=1 AND date(timestamp)=?
             """, (store_id, today)).fetchone()[0] or 0
 
             today_rate = today_conv / today_uv if today_uv > 0 else None
@@ -123,12 +124,10 @@ def get_anomalies(store_id: str):
                     ))
 
             # ── DEAD_ZONE ─────────────────────────────────────────────────────
-            # Zones that normally get traffic but had 0 visits in last 30 min
             normal_zones = db.execute("""
                 SELECT DISTINCT zone_id FROM events
                 WHERE store_id=? AND event_type='ZONE_ENTER'
-                  AND zone_id IS NOT NULL
-                  AND date(timestamp) < date('now')
+                  AND zone_id IS NOT NULL AND date(timestamp) < date('now')
                 GROUP BY zone_id HAVING COUNT(*) > 5
             """, (store_id,)).fetchall()
 
@@ -150,7 +149,9 @@ def get_anomalies(store_id: str):
                     ))
 
     except Exception as e:
-        return jsonify({"error": "database_unavailable", "detail": str(e), "retry_after": 30}), 503
+        return JSONResponse(
+            {"error": "database_unavailable", "detail": str(e), "retry_after": 30},
+            status_code=503,
+        )
 
-    resp = AnomaliesResponse(store_id=store_id, anomalies=detected)
-    return jsonify(resp.model_dump())
+    return AnomaliesResponse(store_id=store_id, anomalies=detected).model_dump()

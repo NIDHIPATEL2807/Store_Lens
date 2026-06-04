@@ -117,7 +117,7 @@ def process_store(store_out: Path, show: bool) -> None:
 
         out_path = viz_dir / f"{cam_id}_zones.jpg"
         cv2.imwrite(str(out_path), annotated)
-        print(f"  [OK]  {cam_id:24s} → {out_path.relative_to(BASE_DIR)}")
+        print(f"  [OK]  {cam_id:24s} -> {out_path.relative_to(BASE_DIR)}")
 
         if show:
             cv2.imshow(f"{layout['store_id']} — {cam_id}", annotated)

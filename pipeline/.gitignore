@@ -1,33 +1,31 @@
-# ── Secrets & credentials ─────────────────────────────────────────────────────
+# ── Secrets ────────────────────────────────────────────────────────────────────
 .env
 .env.*
 *.key
 secrets.json
 credentials.json
-config.local.json
+groq_api_key.ENV
 
-# ── Python runtime ─────────────────────────────────────────────────────────────
+# ── Python runtime ──────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
 *.egg-info/
 dist/
 build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-*.cover
 .coverage
 htmlcov/
 
-# ── Virtual environments ────────────────────────────────────────────────────────
+# ── Virtual environment ─────────────────────────────────────────────────────────
 venv/
 env/
 .venv/
 
-# ── Model weights (large binaries — download separately) ───────────────────────
+# ── Model weights (large binaries — download at runtime) ───────────────────────
 *.pt
 *.pth
 *.onnx
@@ -35,11 +33,7 @@ env/
 *.tflite
 *.pb
 
-# ── Video & image inputs (large media — store in cloud / shared drive) ──────────
-input/
-INPUT/
-*/input/
-*/INPUT/
+# ── VIDEO FILES — never commit (too large) ─────────────────────────────────────
 *.mp4
 *.mov
 *.mkv
@@ -47,53 +41,36 @@ INPUT/
 *.hevc
 *.h265
 *.ts
+*.wmv
+*.flv
+input/
+*/input/
 
-# ── Pipeline outputs (generated, reproducible — do not commit raw data) ─────────
-# output/
-# OUTPUT/
-# */output/
-# */OUTPUT/
+# ── Visualizer output videos (generated, large) ────────────────────────────────
+output/viz/
 
-# ── Layer-specific generated artefacts ──────────────────────────────────────────
-# L1 — extracted frames and viz overlays
-*/frames/
-*/viz/
+# ── SQLite database (generated from events.jsonl via ingest) ───────────────────
+L7_api/data/store.db
+L7_api/data/
 
-# L2 — per-frame JSONL tracks
-*.jsonl
-
-# L1 — auto-backup JSONs created by annotate_zones.py
+# ── Auto-backup JSONs from annotation tool ─────────────────────────────────────
 *_backup_*.json
-
-# Layout PNGs inside output (keep only store_layout.json, not raw images)
-output/**/*.png
-output/**/*.jpg
-output/**/*.jpeg
-
-# ── Logs ────────────────────────────────────────────────────────────────────────
-*.log
-logs/
 
 # ── OS junk ─────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
-ehthumbs.db
 
-# ── IDE / editor ────────────────────────────────────────────────────────────────
+# ── IDE ─────────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
-*.suo
-*.user
 *.swp
-*.swo
 *~
 
-# ── Jupyter ─────────────────────────────────────────────────────────────────────
-.ipynb_checkpoints/
-*.ipynb
+# ── Logs ────────────────────────────────────────────────────────────────────────
+*.log
+logs/
 
-# ── Misc temp ───────────────────────────────────────────────────────────────────
+# ── Misc ────────────────────────────────────────────────────────────────────────
 *.tmp
-*.temp
 *.bak

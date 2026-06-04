@@ -17,6 +17,10 @@ Videos (mp4)  ──►  L2 (detect)    ──►  tracks.jsonl  ──►  L3 (
 | **L1** | `L1_StoreLayout_selfannotate/` | You draw zone polygons on camera frames with your mouse. Produces the spatial map every other layer reads. | Raw mp4 videos | `store_layout.json` |
 | **L2** | `L2_Detect/` | Runs YOLOv8 person detection + ByteTrack on every video. One JSONL per camera per clip — a row per processed frame with bboxes, centroids, track IDs. | mp4 video + `store_layout.json` | `tracks.jsonl` |
 | **L3** | `L3_ZoneAssign/` | Pure geometry — finds which shelf/zone each track centroid is in each frame. Emits ZONE_ENTER, ZONE_EXIT, ZONE_DWELL events with dwell times. | `tracks.jsonl` + `store_layout.json` | `zone_events.jsonl` |
+| **L4** | `L4_entry/` | Watches the entry camera and detects threshold crossings using the `entry_line` from L1. Assigns a deterministic `visitor_id` per session and emits ENTRY / EXIT events. Handles group entry, debounced crossings, glass-door reflections, and born-inside tracks. | `tracks.jsonl` (entry cam) + `store_layout.json` | `entry_events.jsonl` |
+| **L5** | `L5_reid/` | Staff detection (HSV uniform colour → Groq VLM fallback) + Re-ID (OSNet appearance embeddings, cross-camera linking). Saves staff crop images. | `tracks.jsonl` (all cams) + L4 entry events + source videos | `reid_events.jsonl` + `staff_crops/` |
+| **L6** | `L6_emit/` | Merge layer — joins L3/L4/L5 outputs into one clean event stream. Fills visitor_ids on zone events, applies is_staff retroactively, handles REENTRY dedup, POS correlation, session_seq numbering, schema validation. | L3+L4+L5 JSONL + `pos_transactions.csv` + `store_layout.json` | `events.jsonl` + `rejected_events.jsonl` |
+| **L7** | `L7_api/` | Flask REST API — ingests L6 events into SQLite, serves live metrics, conversion funnel, zone heatmap, anomaly detection, and health endpoint. | `events.jsonl` (POST) | HTTP API on port 8000 |
 
 ---
 
@@ -136,6 +140,53 @@ Event types: `ZONE_ENTER` · `ZONE_EXIT` · `ZONE_DWELL` (fires every 30 s of co
 
 ---
 
+### L4 — Entry / Exit Detection
+
+| Command | What it does |
+|---|---|
+| `python run_l4.py --tracks <entry_tracks.jsonl> --layout <layout.json> --output <events.jsonl>` | Process one entry-camera tracks file |
+| `python run_l4.py --tracks_dir <folder/> --layout <layout.json> --output_dir output/` | Process all `.jsonl` in a folder (skips non-entry cameras automatically) |
+| `python run_l4.py --tracks ... --clip_start_utc "2026-03-08T10:00:00Z"` | Pin the date used for deterministic visitor IDs |
+
+> Run from: `pipeline/L4_entry/`
+
+**Output:** `output/<tracks_stem>_entry_events.jsonl`
+
+Each line is one entry/exit event:
+```json
+{
+  "event_id": "uuid-v4",
+  "store_id": "STORE_STORE_1",
+  "camera_id": "CAM_ENTRY_01",
+  "visitor_id": "VIS_c8a2f1",
+  "event_type": "ENTRY",
+  "timestamp": "2026-03-08T10:00:05.200Z",
+  "zone_id": "ENTRY_ZONE",
+  "dwell_ms": 0,
+  "is_staff": null,
+  "confidence": 0.84,
+  "metadata": {
+    "queue_depth": null,
+    "sku_zone": null,
+    "session_seq": 1,
+    "group_id": "G_4a2f11",
+    "group_size": 2,
+    "track_id": 3
+  }
+}
+```
+
+Event types: `ENTRY` · `EXIT`
+
+Edge cases handled:
+- **Debounce** — side must be stable for 2 consecutive frames before committing a crossing
+- **Re-entry suppression** — same `track_id` cannot emit ENTRY again within 30 s
+- **Group entry** — multiple ENTRYs within 2 s share a `group_id`
+- **Born inside** — track appearing for first time inside the store triggers ENTRY immediately (covers ByteTrack loss mid-crossing)
+- **Glass-door reflection** — Store 2: detections still outside the line with confidence < 0.45 are skipped
+
+---
+
 ## Full pipeline — Store 1 example
 
 ```cmd
@@ -207,13 +258,84 @@ input/Store 1/
 | `tracks.jsonl` (L2) | L3 — centroid + track_id per frame |
 | `tracks.jsonl` (L2) | L5 — bbox crops for uniform detection + OSNet Re-ID |
 | `zone_events.jsonl` (L3) | L6 — zone dwell data to join with visitor sessions |
+| `entry_events.jsonl` (L4) | L6 — ENTRY/EXIT events carrying `visitor_id` to anchor each session |
 
 ---
 
-## Known gaps (before running L4+)
+---
+
+### L5 — Staff Detection + Re-ID
+
+| Command | What it does |
+|---|---|
+| `python run_l5.py --tracks_dir <L2_output_folder> --entry_events <entry_events.jsonl> --videos_dir <videos_folder> --layout <layout.json> --output_dir output/` | Process all cameras — staff detection + cross-camera Re-ID |
+
+> Run from: `pipeline/L5_reid/`  
+> Install: `pip install -r requirements.txt`
+
+**Output:** `output/reid_events.jsonl` + `output/staff_crops/*.jpg`
+
+**Visualize:**
+```cmd
+python visualize.py --events output/reid_events.jsonl --tracks <L2_tracks.jsonl> --video <video.mp4> --crops output/staff_crops
+```
+
+---
+
+### L6 — Event Emitter
+
+| Command | What it does |
+|---|---|
+| `python run_l6.py --zone_events <zone_events.jsonl> --entry_events <entry_events.jsonl> --reid_events <reid_events.jsonl> --layout <layout.json> --output_dir output/` | Merge all events + POS correlation into final schema |
+| Add `--pos_data pos_transactions.csv` | Enable conversion tracking |
+
+> Run from: `pipeline/L6_emit/`  
+> Install: `pip install pydantic`
+
+**Output:** `output/events.jsonl` (clean, API-ready) + `output/rejected_events.jsonl` (validation failures with reason)
+
+---
+
+### L7 — Intelligence API
+
+| Command | What it does |
+|---|---|
+| `python app/main.py` | Start Flask API on port 8000 |
+| `flask --app app.main run --port 8000` | Alternative start via Flask CLI |
+| `pytest tests/ -v` | Run all tests |
+| `python feed_events.py --events ../L6_emit/output/events.jsonl` | POST L6 events to the API |
+
+> Run from: `pipeline/L7_api/`  
+> Install: `pip install -r requirements.txt`
+
+**Endpoints:**
+
+| Endpoint | Method | What it returns |
+|---|---|---|
+| `/events/ingest` | POST | Accepts batch of events (up to 500). Idempotent. Returns 200/207/400. |
+| `/stores/{id}/metrics` | GET | Unique visitors, conversion rate, avg dwell per zone, queue depth, abandonment rate |
+| `/stores/{id}/funnel` | GET | Entry → Zone → Billing → Purchase with drop-off % at each stage |
+| `/stores/{id}/heatmap` | GET | Zone visit frequency normalised 0–100 score |
+| `/stores/{id}/anomalies` | GET | Active anomalies: queue spike, conversion drop, dead zone |
+| `/health` | GET | DB status, uptime, per-store last event + stale feed warning |
+
+**Feed events from L6:**
+```cmd
+cd pipeline\L7_api
+python -c "
+import json, requests
+with open('../L6_emit/output/events.jsonl') as f:
+    batch = [json.loads(l) for l in f if l.strip()]
+r = requests.post('http://localhost:8000/events/ingest', json=batch[:500])
+print(r.json())
+"
+```
+
+---
+
+## Known gaps (before running L5+)
 
 | Issue | Layer | Fix needed |
 |---|---|---|
-| `entry_line` and `entry_direction` missing from `store_layout.json` | L1 | Re-annotate entry camera in L1 — the line-crossing tool adds these fields |
-| Entry zone polygon drawn in wrong screen position | L1 | Re-annotate the ENTRY polygon to cover where people actually appear |
-| Entry camera 78% detections flagged `occluded` | L2 | Occlusion threshold (200k px²) is designed for mid-floor cameras; entry cameras need a higher value |
+| Entry camera 78% detections flagged `occluded` | L2 | Occlusion threshold (200k px²) is tuned for mid-floor cameras; entry cameras see full-body silhouettes that legitimately exceed it. Needs a per-camera-type threshold in `detect_track.py`. |
+| `visitor_id` is track-scoped, not person-scoped | L4 | If ByteTrack assigns a new track_id to the same person after a gap, they get a different visitor_id. L5 Re-ID will unify these. |

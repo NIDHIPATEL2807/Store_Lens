@@ -260,35 +260,63 @@
       "frame_height": 1080,
       "zones": [
         {
-          "zone_id": "ENTRY",
-          "zone_name": "Entry",
-          "zone_type": "entry",
+          "zone_id": "OUTSIDE-ENTRY",
+          "zone_name": "Outside-entry",
+          "zone_type": "floor",
           "is_revenue_zone": false,
           "polygon": [
             [
-              221,
-              5
+              18,
+              57
             ],
             [
-              314,
-              665
+              21,
+              613
             ],
             [
-              667,
-              621
+              931,
+              492
             ],
             [
-              723,
-              5
+              926,
+              26
+            ]
+          ]
+        },
+        {
+          "zone_id": "INSIDE-ENTRY",
+          "zone_name": "Inside-entry",
+          "zone_type": "floor",
+          "is_revenue_zone": false,
+          "polygon": [
+            [
+              41,
+              717
+            ],
+            [
+              47,
+              1061
+            ],
+            [
+              773,
+              1048
+            ],
+            [
+              848,
+              879
+            ],
+            [
+              928,
+              587
             ]
           ]
         }
       ],
       "entry_line": {
         "x1": 440,
-        "y1": 40,
-        "x2": 474,
-        "y2": 646
+        "y1": 29,
+        "x2": 473,
+        "y2": 640
       },
       "entry_direction": "top_to_bottom"
     },
@@ -297,14 +325,67 @@
       "camera_type": "entry",
       "frame_width": 960,
       "frame_height": 1080,
-      "zones": [],
+      "zones": [
+        {
+          "zone_id": "OUTSIDE-FLOOR",
+          "zone_name": "Outside-floor",
+          "zone_type": "floor",
+          "is_revenue_zone": false,
+          "polygon": [
+            [
+              17,
+              46
+            ],
+            [
+              932,
+              48
+            ],
+            [
+              912,
+              479
+            ],
+            [
+              34,
+              606
+            ]
+          ]
+        },
+        {
+          "zone_id": "INSIDE-FLOOR",
+          "zone_name": "Inside-floor",
+          "zone_type": "floor",
+          "is_revenue_zone": false,
+          "polygon": [
+            [
+              19,
+              724
+            ],
+            [
+              38,
+              1048
+            ],
+            [
+              741,
+              1049
+            ],
+            [
+              857,
+              853
+            ],
+            [
+              916,
+              646
+            ]
+          ]
+        }
+      ],
       "entry_line": {
-        "x1": 307,
-        "y1": 669,
-        "x2": 669,
-        "y2": 616
+        "x1": 460,
+        "y1": 27,
+        "x2": 494,
+        "y2": 647
       },
-      "entry_direction": "bottom_to_top"
+      "entry_direction": "top_to_bottom"
     },
     {
       "camera_id": "CAM_ZONE_01",

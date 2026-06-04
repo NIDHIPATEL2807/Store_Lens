@@ -1,0 +1,7 @@
+groq
+gdown
+torch
+torchvision
+torchreid
+opencv-python-headless
+numpy

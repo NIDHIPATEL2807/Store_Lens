@@ -700,59 +700,83 @@
       "frame_height": 1080,
       "zones": [
         {
+          "zone_id": "OUTSIDE-FLOOR",
+          "zone_name": "Outside-floor",
+          "zone_type": "floor",
+          "is_revenue_zone": false,
+          "polygon": [
+            [
+              1436,
+              309
+            ],
+            [
+              873,
+              1066
+            ],
+            [
+              1883,
+              1042
+            ],
+            [
+              1886,
+              125
+            ]
+          ]
+        },
+        {
+          "zone_id": "INSIDE-FLOOR",
+          "zone_name": "Inside-floor",
+          "zone_type": "floor",
+          "is_revenue_zone": false,
+          "polygon": [
+            [
+              643,
+              117
+            ],
+            [
+              744,
+              816
+            ],
+            [
+              881,
+              796
+            ],
+            [
+              945,
+              214
+            ]
+          ]
+        },
+        {
           "zone_id": "ENTRY",
           "zone_name": "Entry",
           "zone_type": "entry",
           "is_revenue_zone": false,
           "polygon": [
             [
-              1364,
-              263
+              1003,
+              12
             ],
             [
-              659,
-              1066
+              1263,
+              8
             ],
             [
-              1893,
-              1059
+              1097,
+              698
             ],
             [
-              1895,
-              29
-            ]
-          ]
-        },
-        {
-          "zone_id": "FLOOR",
-          "zone_name": "Floor",
-          "zone_type": "floor",
-          "is_revenue_zone": false,
-          "polygon": [
-            [
-              641,
-              117
-            ],
-            [
-              744,
-              860
-            ],
-            [
-              878,
-              796
-            ],
-            [
-              951,
-              212
+              896,
+              829
             ]
           ]
         }
       ],
       "entry_line": {
-        "x1": 1105,
-        "y1": 0,
-        "x2": 1012,
-        "y2": 724
+        "x1": 1093,
+        "y1": 12,
+        "x2": 1023,
+        "y2": 725
       },
       "entry_direction": "right_to_left"
     },
